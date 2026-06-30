@@ -1,0 +1,87 @@
+-- d. Proyectos cerrados con la información de las facturas generadas desde su inicio.
+
+-- View para ver todos los proyectos cerrados
+CREATE VIEW ProyectosCerrados AS
+SELECT P.IdProyecto, P.Descripcion, SUM(DF.Cantidad) AS TotalDespachado,
+    ISNULL(SUM(DD.CantidadDevuelta + DD.CantidadPerdida), 0) AS TotalRecuperado
+FROM Proyecto AS P
+JOIN Propuesta AS PR 
+ON PR.IdProyecto = P.IdProyecto
+JOIN Conteo AS C 
+ON C.IdPropuesta = PR.IdPropuesta
+JOIN Despacho AS D 
+ON D.IdConteo = C.IdConteo
+JOIN Factura AS F 
+ON F.IdDespacho = D.IdDespacho
+JOIN DetalleFactura AS DF
+ON DF.IdFactura = F.IdFactura 
+LEFT JOIN Devolucion AS DEV 
+ON DEV.IdProyecto = PR.IdPropuesta
+LEFT JOIN DetalleDevolucion AS DD 
+ON DD.IdDevolucion = DEV.IdDevolucion
+WHERE PR.Estatus = 'Aprobada' 
+GROUP BY P.IdProyecto, P.Descripcion
+HAVING SUM(DF.Cantidad) - ISNULL(SUM(DD.CantidadDevuelta + DD.CantidadPerdida), 0) = 0
+
+
+-- Select para conseguir las facturas de cada proyecto cerrado.
+SELECT P.IdProyecto, P.Descripcion, F.*
+FROM Proyecto AS P
+JOIN ProyectosCerrados AS PC
+ON PC.IdProyecto = P.IdProyecto
+JOIN Propuesta AS PR
+ON PR.IdProyecto = P.IdProyecto
+JOIN Conteo AS C
+ON C.IdPropuesta = PR.IdPropuesta
+JOIN Despacho AS D 
+ON D.IdConteo = C.IdConteo
+JOIN Factura AS F
+ON F.IdDespacho = D.IdDespacho
+ORDER BY P.IdProyecto, F.Fecha
+
+
+-- e. Proyecto con equipos en alquiler con sus facturas de continuación que vencen en el mes actual
+
+CREATE VIEW ProyectosFacturasContinuacionActual AS
+SELECT P.IdProyecto, P.Descripcion, F.IdFactura, F.Tipo, F.FechaFinPeriodo, F.Monto
+FROM Factura AS F
+JOIN Despacho AS D
+ON D.IdDespacho = F.IdDespacho
+JOIN Conteo AS C
+ON C.IdConteo = D.IdConteo
+JOIN Propuesta AS PR
+ON PR.IdPropuesta = C.IdPropuesta
+JOIN Proyecto AS P
+ON P.IdProyecto = PR.IdProyecto
+WHERE F.Tipo = 'Continuacion'
+AND MONTH(F.FechaFinPeriodo) = MONTH(GETDATE())
+AND YEAR(F.FechaFinPeriodo) = YEAR(GETDATE())
+AND PR.Estatus = 'Aprobada'
+
+
+-- f. Proyectos por cliente
+
+SELECT C.Id, CONCAT(C.PrimerNombre, ' ', C.SegundoNombre, ' ', C.PrimerApellido, ' ', C.SegundoApellido) AS NombreCompleto,
+    P.IdProyecto, P.Descripcion, P.Direccion
+FROM Cliente AS C
+JOIN Proyecto AS P
+ON P.IdCliente = C.Id
+ORDER BY C.Id
+
+
+-- g. Cierre diario (Facturas que vencen en el día).
+
+CREATE VIEW CierreDiario AS
+SELECT CL.Id AS IdCliente, P.IdProyecto, P.Descripcion, F.*
+FROM Factura AS F
+JOIN Despacho AS D
+ON D.IdDespacho = F.IdDespacho
+JOIN Conteo AS C
+ON C.IdConteo = D.IdConteo
+JOIN Propuesta AS PR
+ON PR.IdPropuesta = C.IdPropuesta
+JOIN Proyecto AS P
+ON P.IdProyecto = PR.IdProyecto
+JOIN Cliente AS CL
+ON CL.Id = P.IdCliente
+WHERE CAST(F.FechaFinPeriodo AS date) = CAST(GETDATE() AS date)
