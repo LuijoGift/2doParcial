@@ -1,0 +1,556 @@
+-- a. Para un proyecto: Conduces de despachos, factura de despacho, facturas de continuación (cada 30 días),
+conduce de devolución, factura de devolución, factura de venta.
+
+-- FUNCION PROPUESTA 
+USE [proyecto_2doParcial]
+GO
+/****** Object:  UserDefinedFunction [dbo].[propuesta_inicial]    Script Date: 2/7/2026 8:22:13 a. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		Luis J
+-- Create date: 01-07-26
+-- Description:	
+-- =============================================
+ALTER FUNCTION [dbo].[propuesta_inicial]
+(
+	-- Add the parameters for the function here
+	@IdProducto int, @CantProducto int
+)
+RETURNS @Reporte TABLE (
+    [Proposito] NVARCHAR(30),
+    [Código] INT,
+    [Descripción] NVARCHAR(150),
+    [Cantidad Disponible] INT,
+    [Precio Unitario] DECIMAL(18,2),
+    [Subtotal]DECIMAL(18,2)
+)
+AS
+BEGIN
+DECLARE @SubtotalGeneral DECIMAL(18,2);
+DECLARE @ImpuestoGeneral DECIMAL(18,2);
+DECLARE @TotalGeneral DECIMAL(18,2);
+
+insert into @Reporte
+   select
+    N'EQUIPOS EN ALQUILER',Id ,Descripcion, CantidadEnExistencia, PrecioAlquiler, @CantProducto * PrecioAlquiler
+  from Equipo
+  where Id = @IdProducto
+
+  INSERT INTO @Reporte VALUES (N'- - - - - - - - - -', NULL, N'- - - - - - - - - -', NULL, NULL, NULL);
+
+    INSERT INTO @Reporte
+    SELECT
+        N'EQUIPOS EN VENTA',Id, Descripcion, CantidadEnExistencia,PrecioVenta, (@CantProducto * PrecioVenta)
+    FROM Equipo
+    WHERE Id = @IdProducto;
+
+  SELECT 
+    @SubtotalGeneral = SUM([Subtotal]),
+    @ImpuestoGeneral = @SubtotalGeneral * 0.18,
+    @TotalGeneral = @SubtotalGeneral + @ImpuestoGeneral
+FROM @Reporte;
+
+    INSERT INTO @Reporte VALUES (N'--------------------', NULL, N'--------------------', NULL, NULL, NULL);
+    
+    INSERT INTO @Reporte ([Proposito], [Descripción], [Subtotal]) 
+    VALUES (N'TOTALES', N'Subtotal General', @SubtotalGeneral);
+    
+    INSERT INTO @Reporte ([Proposito], [Descripción], [Subtotal]) 
+    VALUES (N'TOTALES', N'Impuesto (ITBIS 18%)', @ImpuestoGeneral);
+    
+    INSERT INTO @Reporte ([Proposito], [Descripción], [Subtotal]) 
+    VALUES (N'TOTALES', N'Total General', @TotalGeneral);
+	RETURN 
+END
+
+-- CONTEO ENTREGA 
+USE [proyecto_2doParcial]
+GO
+
+/****** Object:  View [dbo].[GenerarConteo]    Script Date: 2/7/2026 8:23:10 a. m. ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE VIEW [dbo].[GenerarConteo] AS
+SELECT 
+    C.IdPropuesta,
+    E.Id,
+    E.Descripcion,
+    C.Cuenta,
+    N'______' AS [Entregado]
+FROM Conteo C
+INNER JOIN Equipo E ON C.IdEquipo = E.Id;
+GO
+
+
+--CONDUCE ENTREGA
+USE [proyecto_2doParcial]
+GO
+
+/****** Object:  View [dbo].[ConduceEntrega]    Script Date: 2/7/2026 8:24:25 a. m. ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE VIEW [dbo].[ConduceEntrega] AS
+SELECT 
+    C.IdPropuesta AS [No. Propuesta],
+    E.Id AS [Código],
+    E.Descripcion AS [Descripción],
+    C.Cuenta AS [Cantidad Entregada]  
+FROM dbo.Conteo C
+INNER JOIN dbo.Equipo E ON C.IdEquipo = E.Id;
+GO
+
+
+-- FUNCION FACTURA DESPACHO 
+USE [proyecto_2doParcial]
+GO
+/****** Object:  UserDefinedFunction [dbo].[FacturaDespacho]    Script Date: 2/7/2026 8:25:12 a. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		Luis J
+-- Create date: 01-07-26
+-- Description:	
+-- =============================================
+ALTER FUNCTION [dbo].[FacturaDespacho](
+	@IdPropuesta int
+)
+RETURNS @Reporte TABLE (
+    [Proyecto/Cliente] NVARCHAR(150),  
+    [Período (Primeros 30 Días)] NVARCHAR(60), 
+    [Código] INT,
+    [Descripción] NVARCHAR(150),
+    [Cantidad] INT,
+    [Precio Alquiler (Mes)] DECIMAL(18,2),
+    [Importe] DECIMAL(18,2)
+)
+AS
+BEGIN
+    DECLARE @SubtotalGeneral DECIMAL(18,2);
+    DECLARE @ImpuestoGeneral DECIMAL(18,2);
+    DECLARE @TotalGeneral DECIMAL(18,2);
+
+    INSERT INTO @Reporte
+    SELECT 
+        PR.Descripcion,
+        CONVERT(NVARCHAR, P.FechaPropuesta, 103) + N' a ' + 
+        CONVERT(NVARCHAR, DATEADD(day, 30, P.FechaPropuesta), 103),
+        E.Id, 
+        E.Descripcion, 
+        C.Cuenta, 
+        CAST(E.PrecioAlquiler AS DECIMAL(18,2)),         
+        CAST((C.Cuenta * E.PrecioAlquiler) AS DECIMAL(18,2))         
+    FROM dbo.Conteo C
+    INNER JOIN dbo.Equipo E ON C.IdEquipo = E.Id
+    INNER JOIN dbo.Propuesta P ON C.IdPropuesta = P.IdPropuesta
+    INNER JOIN dbo.Proyecto PR ON P.IdProyecto = PR.IdProyecto
+    WHERE C.IdPropuesta = @IdPropuesta;
+    SELECT 
+        @SubtotalGeneral = SUM([Importe]),
+        @ImpuestoGeneral = @SubtotalGeneral * 0.18,
+        @TotalGeneral = @SubtotalGeneral + @ImpuestoGeneral
+    FROM @Reporte;
+
+    INSERT INTO @Reporte VALUES (N'--------------------', NULL, NULL, N'--------------------', NULL, NULL, NULL);
+    INSERT INTO @Reporte ([Proyecto/Cliente], [Descripción], [Importe]) VALUES (N'TOTALES', N'Subtotal Inicial', @SubtotalGeneral);
+    INSERT INTO @Reporte ([Proyecto/Cliente], [Descripción], [Importe]) VALUES (N'TOTALES', N'ITBIS (18%)', @ImpuestoGeneral);
+    INSERT INTO @Reporte ([Proyecto/Cliente], [Descripción], [Importe]) VALUES (N'TOTALES', N'Total Primer Mes (Adelantado)', @TotalGeneral);
+
+    RETURN 
+END
+
+-- FUNCION FACTURA CONTINUACION 
+USE [proyecto_2doParcial]
+GO
+/****** Object:  UserDefinedFunction [dbo].[GenerarFacturaContinuacion]    Script Date: 2/7/2026 8:29:02 a. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		Luis J
+-- Create date: 01-07-26
+-- Description:	
+-- =============================================
+ALTER FUNCTION [dbo].[GenerarFacturaContinuacion](
+	@IdPropuesta int
+)
+RETURNS @Reporte TABLE (
+    [Proyecto/Cliente] NVARCHAR(150),  
+    [Período (Inicio - Fin)] NVARCHAR(60), 
+    [Código] INT,
+    [Descripción] NVARCHAR(150),
+    [Cantidad] INT,
+    [Monto] DECIMAL(18,2),
+    [Importe] DECIMAL(18,2)
+)
+AS
+BEGIN
+    DECLARE @SubtotalGeneral DECIMAL(18,2);
+    DECLARE @ImpuestoGeneral DECIMAL(18,2);
+    DECLARE @TotalGeneral DECIMAL(18,2);
+
+    INSERT INTO @Reporte
+    SELECT 
+        PR.Descripcion,
+        
+        CONVERT(NVARCHAR, DATEADD(day, 30, P.FechaPropuesta), 103) + N' a ' + 
+        CONVERT(NVARCHAR, DATEADD(day, 60, P.FechaPropuesta), 103),
+        
+        E.Id, 
+        E.Descripcion, 
+        C.Cuenta, 
+        E.PrecioAlquiler,         
+        (C.Cuenta * E.PrecioAlquiler)         
+    FROM dbo.Conteo C
+    INNER JOIN dbo.Equipo E ON C.IdEquipo = E.Id
+    INNER JOIN dbo.Propuesta P ON C.IdPropuesta = P.IdPropuesta
+    INNER JOIN dbo.Proyecto PR ON P.IdProyecto = PR.IdProyecto
+    WHERE C.IdPropuesta = @IdPropuesta;
+
+    SELECT 
+        @SubtotalGeneral = SUM([Importe]),
+        @ImpuestoGeneral = @SubtotalGeneral * 0.18,
+        @TotalGeneral = @SubtotalGeneral + @ImpuestoGeneral
+    FROM @Reporte;
+
+    INSERT INTO @Reporte VALUES (N'--------------------', NULL, NULL, N'--------------------', NULL, NULL, NULL);
+    
+    INSERT INTO @Reporte ([Proyecto/Cliente], [Descripción], [Importe]) 
+    VALUES (N'TOTALES', N'Subtotal', @SubtotalGeneral);
+    
+    INSERT INTO @Reporte ([Proyecto/Cliente], [Descripción], [Importe]) 
+    VALUES (N'TOTALES', N'Imp', @ImpuestoGeneral);
+    
+    INSERT INTO @Reporte ([Proyecto/Cliente], [Descripción], [Importe]) 
+    VALUES (N'TOTALES', N'Total', @TotalGeneral);
+
+    RETURN 
+END
+
+ 
+-- CONTEO DEVOLUCION 
+USE [proyecto_2doParcial]
+GO
+
+/****** Object:  View [dbo].[ConteoDevolucion]    Script Date: 2/7/2026 8:27:39 a. m. ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE VIEW [dbo].[ConteoDevolucion] AS
+SELECT 
+    C.IdPropuesta,
+    E.Id AS [Código],
+    E.Descripcion AS [Descripción],
+    N'______' AS [Devuelto] 
+FROM dbo.Conteo C
+INNER JOIN dbo.Equipo E ON C.IdEquipo = E.Id;
+
+GO
+
+
+-- CONDUCE DEVOLUCION
+USE [proyecto_2doParcial]
+GO
+
+/****** Object:  View [dbo].[ConduceDevolucion]    Script Date: 2/7/2026 8:28:13 a. m. ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE VIEW [dbo].[ConduceDevolucion] AS
+SELECT 
+    C.IdPropuesta,
+    PR.Descripcion AS [Proyecto/Cliente],
+    CONVERT(NVARCHAR, P.FechaPropuesta, 103) + N' a ' + CONVERT(NVARCHAR, DATEADD(day, 30, P.FechaPropuesta), 103) AS [Período],
+    E.Id AS [Código],
+    E.Descripcion AS [Descripción],
+    C.Cuenta AS [Cantidad Devuelta] 
+FROM dbo.Conteo C
+INNER JOIN dbo.Equipo E ON C.IdEquipo = E.Id
+INNER JOIN dbo.Propuesta P ON C.IdPropuesta = P.IdPropuesta
+INNER JOIN dbo.Proyecto PR ON P.IdProyecto = PR.IdProyecto;
+
+GO
+
+
+-- FUNCION FACTURA DEVOLUCION
+USE [proyecto_2doParcial]
+GO
+/****** Object:  UserDefinedFunction [dbo].[FacturaDevolucion]    Script Date: 2/7/2026 8:28:39 a. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		Luis J
+-- Create date: 01-07-26
+-- Description:	
+-- =============================================
+ALTER FUNCTION [dbo].[FacturaDevolucion](
+	@IdProyecto int,
+	@DiasProporcionales int 
+)
+RETURNS @Reporte TABLE (
+    [Proyecto/Cliente] NVARCHAR(150),  
+    [Período] NVARCHAR(60), 
+    [Código] INT,
+    [Descripción] NVARCHAR(150),
+    [Cantidad] INT,
+    [Tarifa Diaria] DECIMAL(18,2),
+    [Días Cobrados] INT,
+    [Importe] DECIMAL(18,2)
+)
+AS
+BEGIN
+    DECLARE @SubtotalGeneral DECIMAL(18,2);
+    DECLARE @ImpuestoGeneral DECIMAL(18,2);
+    DECLARE @TotalGeneral DECIMAL(18,2);
+
+    INSERT INTO @Reporte
+    SELECT 
+        PR.Descripcion,
+        N'Proporcional cobrado a la fecha', 
+        E.Id, 
+        E.Descripcion, 
+        DD.CantidadDevuelta,        
+        CAST((E.PrecioAlquiler / 30.0) AS DECIMAL(18,2)), 
+        @DiasProporcionales,
+        CAST((DD.CantidadDevuelta * (E.PrecioAlquiler / 30.0) * @DiasProporcionales) AS DECIMAL(18,2)) 
+        
+    FROM dbo.DetalleDevolucion DD
+    INNER JOIN dbo.Devolucion D ON DD.IdDevolucion = D.IdDevolucion
+    INNER JOIN dbo.Equipo E ON DD.IdEquipo = E.Id
+    INNER JOIN dbo.Proyecto PR ON D.IdProyecto = PR.IdProyecto
+    WHERE D.IdProyecto = @IdProyecto;
+
+    SELECT @SubtotalGeneral = SUM([Importe]) FROM @Reporte;
+    SET @ImpuestoGeneral = @SubtotalGeneral * 0.18;
+    SET @TotalGeneral = @SubtotalGeneral + @ImpuestoGeneral;
+
+    INSERT INTO @Reporte VALUES (N'--------------------', NULL, NULL, N'--------------------', NULL, NULL, NULL, NULL);
+    INSERT INTO @Reporte ([Proyecto/Cliente], [Descripción], [Importe]) VALUES (N'TOTALES', N'Subtotal', @SubtotalGeneral);
+    INSERT INTO @Reporte ([Proyecto/Cliente], [Descripción], [Importe]) VALUES (N'TOTALES', N'ITBIS (18%)', @ImpuestoGeneral);
+    INSERT INTO @Reporte ([Proyecto/Cliente], [Descripción], [Importe]) VALUES (N'TOTALES', N'Total a Pagar', @TotalGeneral);
+
+    RETURN 
+END
+
+-- FUNCION FACTURA VENTA
+USE [proyecto_2doParcial]
+GO
+/****** Object:  UserDefinedFunction [dbo].[FacturaVenta]    Script Date: 2/7/2026 8:29:58 a. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		Luis J
+-- Create date: 01-07-26
+-- Description:	
+-- =============================================
+
+ALTER FUNCTION [dbo].[FacturaVenta](
+	@IdProyecto int
+)
+RETURNS @Reporte TABLE (
+    [Proyecto] NVARCHAR(150),  
+    [Código] INT,
+    [Descripción] NVARCHAR(150),
+    [Faltantes/Perdidos] INT,
+    [Precio Venta] DECIMAL(18,2),
+    [Importe] DECIMAL(18,2)
+)
+AS
+BEGIN
+    DECLARE @SubtotalGeneral DECIMAL(18,2);
+    DECLARE @ImpuestoGeneral DECIMAL(18,2);
+    DECLARE @TotalGeneral DECIMAL(18,2);
+
+    INSERT INTO @Reporte
+    SELECT 
+        PR.Descripcion,
+        E.Id, 
+        E.Descripcion, 
+        DD.CantidadPerdida, 
+        E.PrecioVenta,     
+        (DD.CantidadPerdida * E.PrecioVenta)       
+    FROM dbo.DetalleDevolucion DD
+    INNER JOIN dbo.Devolucion D ON DD.IdDevolucion = D.IdDevolucion
+    INNER JOIN dbo.Equipo E ON DD.IdEquipo = E.Id
+    INNER JOIN dbo.Proyecto PR ON D.IdProyecto = PR.IdProyecto
+    WHERE D.IdProyecto = @IdProyecto AND DD.CantidadPerdida > 0;
+
+    SELECT @SubtotalGeneral = SUM([Importe]) FROM @Reporte;
+    SET @ImpuestoGeneral = @SubtotalGeneral * 0.18;
+    SET @TotalGeneral = @SubtotalGeneral + @ImpuestoGeneral;
+
+    IF @SubtotalGeneral IS NOT NULL
+    BEGIN
+        INSERT INTO @Reporte VALUES (N'--------------------', NULL, N'--------------------', NULL, NULL, NULL);
+        INSERT INTO @Reporte ([Proyecto], [Descripción], [Importe]) VALUES (N'TOTALES', N'Subtotal Venta', @SubtotalGeneral);
+        INSERT INTO @Reporte ([Proyecto], [Descripción], [Importe]) VALUES (N'TOTALES', N'ITBIS (18%)', @ImpuestoGeneral);
+        INSERT INTO @Reporte ([Proyecto], [Descripción], [Importe]) VALUES (N'TOTALES', N'Total Venta Definitiva', @TotalGeneral);
+    END
+
+    RETURN 
+END
+
+-- b. Inventario por proyecto de cada cliente
+USE [proyecto_2doParcial]
+GO
+
+/****** Object:  View [dbo].[InventarioPorProyecto]    Script Date: 2/7/2026 8:30:57 a. m. ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE VIEW [dbo].[InventarioPorProyecto] AS
+SELECT 
+    PR.Descripcion AS [Proyecto],
+    CL.PrimerNombre AS [Cliente],
+    E.Id AS [Código Equipo],
+    E.Descripcion AS [Equipo],
+    DD.CantidadDevuelta AS [Cantidad Devuelta],
+    DD.CantidadPerdida AS [Cantidad Perdida],
+    (DD.CantidadDevuelta + DD.CantidadPerdida) AS [Total Retornado]
+FROM dbo.DetalleDevolucion DD
+INNER JOIN dbo.Devolucion D ON DD.IdDevolucion = D.IdDevolucion
+INNER JOIN dbo.Equipo E ON DD.IdEquipo = E.Id
+INNER JOIN dbo.Proyecto PR ON D.IdProyecto = PR.IdProyecto
+INNER JOIN dbo.Cliente CL ON PR.IdCliente = CL.Id; 
+
+GO
+
+
+-- c. Monto en depósito por cliente por proyecto.
+USE [proyecto_2doParcial]
+GO
+
+/****** Object:  View [dbo].[DepositoPorProyecto]    Script Date: 2/7/2026 8:31:47 a. m. ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE VIEW [dbo].[DepositoPorProyecto] AS
+SELECT 
+    PR.Descripcion AS [Proyecto],
+    CL.PrimerNombre AS [Cliente],
+    D.IdDeposito AS [No. Depósito],
+    CAST(D.Monto AS DECIMAL(18,2)) AS [Monto Depósito] 
+
+FROM dbo.Deposito D
+INNER JOIN dbo.Proyecto PR ON D.IdProyecto = PR.IdProyecto
+INNER JOIN dbo.Cliente CL ON PR.IdCliente = CL.Id;
+
+GO
+
+-- d. Proyectos cerrados con la información de las facturas generadas desde su inicio.
+
+-- View para ver todos los proyectos cerrados
+CREATE VIEW ProyectosCerrados AS
+SELECT P.IdProyecto, P.Descripcion, SUM(DF.Cantidad) AS TotalDespachado,
+    ISNULL(SUM(DD.CantidadDevuelta + DD.CantidadPerdida), 0) AS TotalRecuperado
+FROM Proyecto AS P
+JOIN Propuesta AS PR 
+ON PR.IdProyecto = P.IdProyecto
+JOIN Conteo AS C 
+ON C.IdPropuesta = PR.IdPropuesta
+JOIN Despacho AS D 
+ON D.IdConteo = C.IdConteo
+JOIN Factura AS F 
+ON F.IdDespacho = D.IdDespacho
+JOIN DetalleFactura AS DF
+ON DF.IdFactura = F.IdFactura 
+LEFT JOIN Devolucion AS DEV 
+ON DEV.IdProyecto = PR.IdPropuesta
+LEFT JOIN DetalleDevolucion AS DD 
+ON DD.IdDevolucion = DEV.IdDevolucion
+WHERE PR.Estatus = 'Aprobada' 
+GROUP BY P.IdProyecto, P.Descripcion
+HAVING SUM(DF.Cantidad) - ISNULL(SUM(DD.CantidadDevuelta + DD.CantidadPerdida), 0) = 0
+
+
+-- Select para conseguir las facturas de cada proyecto cerrado.
+SELECT P.IdProyecto, P.Descripcion, F.*
+FROM Proyecto AS P
+JOIN ProyectosCerrados AS PC
+ON PC.IdProyecto = P.IdProyecto
+JOIN Propuesta AS PR
+ON PR.IdProyecto = P.IdProyecto
+JOIN Conteo AS C
+ON C.IdPropuesta = PR.IdPropuesta
+JOIN Despacho AS D 
+ON D.IdConteo = C.IdConteo
+JOIN Factura AS F
+ON F.IdDespacho = D.IdDespacho
+ORDER BY P.IdProyecto, F.Fecha
+
+
+-- e. Proyecto con equipos en alquiler con sus facturas de continuación que vencen en el mes actual
+
+CREATE VIEW ProyectosFacturasContinuacionActual AS
+SELECT P.IdProyecto, P.Descripcion, F.IdFactura, F.Tipo, F.FechaFinPeriodo, F.Monto
+FROM Factura AS F
+JOIN Despacho AS D
+ON D.IdDespacho = F.IdDespacho
+JOIN Conteo AS C
+ON C.IdConteo = D.IdConteo
+JOIN Propuesta AS PR
+ON PR.IdPropuesta = C.IdPropuesta
+JOIN Proyecto AS P
+ON P.IdProyecto = PR.IdProyecto
+WHERE F.Tipo = 'Continuacion'
+AND MONTH(F.FechaFinPeriodo) = MONTH(GETDATE())
+AND YEAR(F.FechaFinPeriodo) = YEAR(GETDATE())
+AND PR.Estatus = 'Aprobada'
+
+
+-- f. Proyectos por cliente
+
+SELECT C.Id, CONCAT(C.PrimerNombre, ' ', C.SegundoNombre, ' ', C.PrimerApellido, ' ', C.SegundoApellido) AS NombreCompleto,
+    P.IdProyecto, P.Descripcion, P.Direccion
+FROM Cliente AS C
+JOIN Proyecto AS P
+ON P.IdCliente = C.Id
+ORDER BY C.Id
+
+
+-- g. Cierre diario (Facturas que vencen en el día).
+
+CREATE VIEW CierreDiario AS
+SELECT CL.Id AS IdCliente, P.IdProyecto, P.Descripcion, F.*
+FROM Factura AS F
+JOIN Despacho AS D
+ON D.IdDespacho = F.IdDespacho
+JOIN Conteo AS C
+ON C.IdConteo = D.IdConteo
+JOIN Propuesta AS PR
+ON PR.IdPropuesta = C.IdPropuesta
+JOIN Proyecto AS P
+ON P.IdProyecto = PR.IdProyecto
+JOIN Cliente AS CL
+ON CL.Id = P.IdCliente
+WHERE CAST(F.FechaFinPeriodo AS date) = CAST(GETDATE() AS date)
