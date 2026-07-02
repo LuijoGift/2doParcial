@@ -1,0 +1,73 @@
+
+
+-- Clientes (Id: 1 y 2)[cite: 4]
+INSERT INTO [dbo].[Cliente] ([PrimerNombre], [SegundoNombre], [PrimerApellido], [SegundoApellido], [DocumentoIdentidad], [Direccion])
+VALUES 
+(N'Carlos', N'Antonio', N'Martínez', N'Gómez', N'001-1234567-8', N'Av. Juan Pablo Duarte, Santiago'),
+(N'Constructora', N'Del', N'Norte', N'SRL', N'1-31-12345-6', N'Calle Del Sol, Santiago');
+
+-- Proyectos (Id: 1 y 2)[cite: 4]
+INSERT INTO [dbo].[Proyecto] ([IdCliente], [Descripcion], [Direccion])
+VALUES 
+(1, N'Torre Alta Vista', N'La Trinitaria, Santiago'),
+(2, N'Plaza Comercial Las Ramblas', N'Av. Metropolitana, Santiago');
+
+-- Equipos (Id: 1, 2 y 3) - Inicializados con CantidadPrestada en 0[cite: 4]
+INSERT INTO [dbo].[Equipo] ([Descripcion], [PrecioAlquiler], [PrecioVenta], [CantidadEnExistencia], [CantidadPrestada])
+VALUES 
+(N'Andamio Tubular Estándar', 1500.00, 4500.00, 50, 0),
+(N'Mezcladora de Concreto 11 p3', 6000.00, 25000.00, 15, 0),
+(N'Generador Eléctrico 10KVA', 12000.00, 45000.00, 8, 0);
+
+-- Propuestas (Id: 1 y 2)[cite: 4]
+INSERT INTO [dbo].[Propuesta] ([IdProyecto], [Descripcion], [FechaPropuesta], [Estatus], [Monto], [Impuesto], [PorcentajeDescuento])
+VALUES 
+(1, N'Propuesta Inicial de Andamios y Mezcladora', '2026-06-01', N'Aprobada', 13500.00, 2430.00, 0.00),
+(2, N'Propuesta Equipos Pesados Plaza', '2026-06-15', N'Aprobada', 24000.00, 4320.00, 5.00);
+
+-- Conteo (Id: 1, 2 y 3)[cite: 4]
+INSERT INTO [dbo].[Conteo] ([IdPropuesta], [IdEquipo], [Cuenta])
+VALUES 
+(1, 1, 5), 
+(1, 2, 1), 
+(2, 3, 2);
+
+-- Despachos (Id: 1, 2 y 3)[cite: 4]
+INSERT INTO [dbo].[Despacho] ([IdConteo], [Fecha])
+VALUES 
+(1, '2026-06-02'),
+(2, '2026-06-02'),
+(3, '2026-06-16');
+
+-- Facturas (Id: 1, 2 y 3)[cite: 4]
+INSERT INTO [dbo].[Factura] ([IdDespacho], [Tipo], [Fecha], [Monto], [FechaInicioPeriodo], [FechaFinPeriodo])
+VALUES 
+(1, N'Despacho', '2026-06-02', 7500.00, '2026-06-02', '2026-07-02'),
+(2, N'Despacho', '2026-06-02', 6000.00, '2026-06-02', '2026-07-02'),
+(1, N'Continuacion', '2026-07-02', 7500.00, '2026-07-02', '2026-08-01');
+
+-- Detalles de Facturas[cite: 4]
+INSERT INTO [dbo].[DetalleFactura] ([IdFactura], [IdEquipo], [Cantidad], [PrecioAplicado])
+VALUES 
+(1, 1, 5, 1500.00),
+(2, 2, 1, 6000.00);
+
+-- Depósitos en Garantía por Proyecto[cite: 4]
+INSERT INTO [dbo].[Deposito] ([IdProyecto], [Monto])
+VALUES 
+(1, 13500.00),
+(2, 24000.00);
+
+-- Cabecera de Devolución para el Proyecto 1 (IdDevolucion: 1)[cite: 4]
+INSERT INTO [dbo].[Devolucion] ([IdProyecto], [Monto])
+VALUES 
+(1, 0.00);
+
+-- Detalle de Devolución amarrado al IdDevolucion = 1 (Fuerza el enlace manual)[cite: 4]
+SET IDENTITY_INSERT [dbo].[DetalleDevolucion] ON;
+
+INSERT INTO [dbo].[DetalleDevolucion] ([IdDevolucion], [IdEquipo], [CantidadDevuelta], [CantidadPerdida])
+VALUES (1, 1, 3, 1);
+
+SET IDENTITY_INSERT [dbo].[DetalleDevolucion] OFF;
+GO
